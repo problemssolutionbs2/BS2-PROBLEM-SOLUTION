@@ -1464,7 +1464,12 @@ function doPost(e) {
 
       headersU.forEach((h, colIdx) => {
         if (fieldMap.hasOwnProperty(h)) {
-          sheetU.getRange(targetRow, colIdx + 1).setValue(fieldMap[h]);
+          const cellU = sheetU.getRange(targetRow, colIdx + 1);
+          if (h === 'Start Program' || h === 'Maintenance Status Date') {
+            applyDateCell(cellU, fieldMap[h], h);
+          } else {
+            cellU.setValue(fieldMap[h]);
+          }
         }
       });
 
@@ -1498,12 +1503,49 @@ function doPost(e) {
       data.crew_chief, data.technical_support, data.note,
       data.maintenance_status, data.maintenance_date
     ]);
+    // Format tanggal di Sheet: dd/mm/yyyy
+    const lastRowN = sheet.getLastRow();
+    const hdrN = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    ['Start Program', 'Maintenance Status Date'].forEach(function(h) {
+      const ci = hdrN.indexOf(h);
+      if (ci === -1) return;
+      const raw = (h === 'Start Program') ? data.start_program : data.maintenance_date;
+      applyDateCell(sheet.getRange(lastRowN, ci + 1), raw, h);
+    });
 
     return jsonOut({status:'success', message:'Data berhasil disimpan', nomor: data.nomor});
 
   } catch(err) {
     return jsonOut({status:'error', message: err.toString()});
   }
+}
+
+// Tulis tanggal sebagai Date asli + tampilan dd/mm/yyyy
+function applyDateCell(cell, raw, headerName) {
+  const fmt = (headerName === 'Start Program') ? 'dd/mm/yyyy hh:mm' : 'dd/mm/yyyy';
+  const str = String(raw || '').trim();
+  if (!str) { cell.clearContent(); return; }
+  const m = str.match(/^(\\d{4})-(\\d{2})-(\\d{2})(?:[T ](\\d{2}):(\\d{2}))?/);
+  if (m) {
+    cell.setValue(new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)));
+  } else {
+    cell.setValue(raw);
+  }
+  cell.setNumberFormat(fmt);
+}
+
+// Jalankan SEKALI dari editor Apps Script untuk memformat data lama
+function formatTanggalLama() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME) || ss.getActiveSheet();
+  const last = sheet.getLastRow();
+  if (last < 2) return;
+  const hdr = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const cols = {'Start Program': 'dd/mm/yyyy hh:mm', 'Maintenance Status Date': 'dd/mm/yyyy'};
+  Object.keys(cols).forEach(function(h) {
+    const ci = hdr.indexOf(h);
+    if (ci !== -1) sheet.getRange(2, ci + 1, last - 1, 1).setNumberFormat(cols[h]);
+  });
 }
 
 function jsonOut(obj) {
